@@ -1,4 +1,6 @@
 import base64
+import getpass
+from random import randint
 import os
 import socket
 import sys
@@ -16,7 +18,7 @@ def print_help():
 
 def get_args():
     global login, password, recipient, host
-    if len(sys.argv) == 1:
+    if len(sys.argv) < 2:
         print_help()
         sys.exit(0)
     else:
@@ -25,37 +27,49 @@ def get_args():
             global port
             port = int(sys.argv[2])
     login = input("LOGIN: ")
-    password = input("PASS: ")
+    password = getpass.getpass('PASS: ')
     recipient = input("recipient: ".upper())
 
 
 def gen_mess():
     global all_files, login, recipient
+    delim = ''
+    symb = 'ABCDEFGHIJKLMNOPQRSTUVWXYZqwertyuiopasdfghjklzxcvbnm1234567890+-#!^;'
+    randN = randint(10, 21)
+    for i in range(1, randN):
+        randInd = randint(0, 64)
+        delim += symb[randInd]
     result = 'FROM: {0} <{0}>\r\n' \
              'TO: {1} <{1}>\r\n' \
              'Subject: all img files in dir\r\n' \
              'Content-Type: Multipart/mixed; boundary=\"{2}\"\r\n'
-    for file in all_files:
+    result = result.format(login, recipient, delim)
+    for file, content in all_files.items():
         result += '--{2}\r\n' \
-                  'Content-Type: application/octet-stream; name=\"im.jpg\"\r\n' \
+                  'Content-Type: application/octet-stream; name=\"{4}\"\r\n' \
                   'Content-transfer-encoding: base64\r\n' \
-                  'Content-Disposition: attachment; filename=\"im.jpg\"\r\n' \
+                  'Content-Disposition: attachment; filename=\"{4}\"\r\n' \
                   '\r\n' \
                   '{3}\r\n'
-        result = result.format(login, recipient, '!@#$%^', file.decode('utf-8'))
+        result = result.format(login, recipient, delim, content.decode('utf-8'), file)
     return result
 
 
 def gen_list_of_im():
     global all_files
-    all_files = []
+    all_files = {}
 
     for file in os.listdir("./"):
-        if file.endswith('.jpg') or file.endswith('.png') or file.endswith('.jpeg'):
+        if file.lower().endswith('.jpg') or file.endswith('.png') or file.endswith('.jpeg'):
             with open(file, "rb") as image_file:
                 encoded_string = base64.b64encode(image_file.read())
-                all_files.append(encoded_string)
+                all_files[file] = encoded_string
             image_file.close()
+
+
+def send(m, sock):
+    sock.send((m + '\r\n').encode('utf-8'))
+    print(sock.recv(1024).decode('utf-8'))
 
 
 def send_and_print(m, sock):
@@ -79,11 +93,11 @@ def create_and_send_mess(sock):
         to_base64('{0}'.format(password)),
         'mail from: <{0}>'.format(login),
         'rcpt to: <{0}>'.format(recipient),
-        'data',
-        gen_mess() + '\r\n.'
+        'data'
     ]
     for m in messages:
         send_and_print(m, sock)
+    send(gen_mess() + '\r\n.', sock)
 
 
 def main():
